@@ -1,0 +1,52 @@
+# Multi-stage Dockerfile for FastAPI Backend
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+# Install system build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install python dependencies in a virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY backend/pyproject.toml README.md* ./
+RUN pip install --no-cache-dir --upgrade pip setuptools && \
+    pip install --no-cache-dir fastapi "uvicorn[standard]" pydantic pydantic-settings \
+    sqlalchemy asyncpg alembic python-jose[cryptography] passlib[bcrypt] bcrypt \
+    python-multipart httpx google-genai sentence-transformers faiss-cpu \
+    langchain langgraph faster-whisper structlog
+
+# Final runtime image
+FROM python:3.11-slim AS runner
+
+WORKDIR /app
+
+# Install runtime system packages (ffmpeg for audio handling)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Copy backend application source
+COPY backend /app
+
+# Create upload directory
+RUN mkdir -p /app/data/uploads
+
+# Expose FastAPI port
+EXPOSE 8000
+
+# Healthcheck
+HEALTHCHECK --interval=15s --timeout=5s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8000/api/v1/health || exit 1
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: meeting_assistant_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-meeting_assistant}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-meeting_assistant}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - meeting_assistant_net
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: meeting_assistant_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      ENVIRONMENT: development
+      DEBUG: "true"
+      POSTGRES_SERVER: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-meeting_assistant}
+      SECRET_KEY: ${SECRET_KEY:-dev-insecure-secret-key-change-me-in-production-1234567890}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: gemini-2.5-flash
+      EMBEDDING_MODEL: all-MiniLM-L6-v2
+      BACKEND_CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
+      STORAGE_DIR: /app/data/uploads
+    volumes:
+      - uploads_data:/app/data/uploads
+    networks:
+      - meeting_assistant_net
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+    container_name: meeting_assistant_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+    networks:
+      - meeting_assistant_net
+
+volumes:
+  postgres_data:
+    name: meeting_assistant_postgres_data
+  uploads_data:
+    name: meeting_assistant_uploads_data
+
+networks:
+  meeting_assistant_net:
+    name: meeting_assistant_network
+    driver: bridge
