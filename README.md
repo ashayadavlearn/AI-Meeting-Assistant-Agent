@@ -48,3 +48,4 @@ Production-ready AI Meeting Assistant combining Faster-Whisper speech-to-text, G
 docker compose -f docker/docker-compose.yml up --build
 ```
 "# AI-Meeting-Assistant-Agent" 
+"# AI-Meeting-Assistant-Agent" 
